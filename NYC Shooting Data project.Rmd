@@ -1,0 +1,168 @@
+---
+title: "Project NYPD Shooting Incident Data"
+author: "Simon F."
+date: "2024-06-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+List of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
+
+This is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included. 
+
+The last Metadata updated date was April 26th 2024
+
+
+## Step 0: Import Library
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+```
+## Step 1: Load Data
+
+*  leveraging 'read_csv()' to read the file
+
+```{r load}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df) # this shows the headers
+```
+## Step 2: Tidy and Transform Data
+
+Need to get rid of some of the columns, will create new df as df_2 that only has the columsn that I want.
+
+```{r}
+df_2 = df %>% select(INCIDENT_KEY,OCCUR_DATE, OCCUR_TIME, BORO, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE )
+```
+Adding in some unknowns for some missing data
+
+```{r}
+df_2 = df_2 %>% 
+     replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+```
+Tidying some of the values
+
+```{r}
+df_2$PERP_AGE_GROUP = recode(df_2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+df_2$PERP_SEX = recode(df_2$PERP_SEX, U = "Unknown")
+df_2$PERP_RACE = recode(df_2$PERP_RACE, UNKNOWN = "Unknown")
+df_2$VIC_SEX   = recode(df_2$VIC_SEX, U = "Unknown")
+df_2$VIC_RACE   = recode(df_2$VIC_RACE, UNKNOWN = "Unknown")
+```
+Manking INCIDENT_KEY a character
+
+```{r}
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+```
+Coverting the  vector into factors
+
+```{r}
+df_2$BORO = as.factor(df_2$BORO)
+df_2$PERP_AGE_GROUP = as.factor(df_2$PERP_AGE_GROUP)
+df_2$PERP_SEX = as.factor(df_2$PERP_SEX)
+df_2$PERP_RACE = as.factor(df_2$PERP_RACE)
+df_2$VIC_AGE_GROUP = as.factor(df_2$VIC_AGE_GROUP)
+df_2$VIC_SEX = as.factor(df_2$VIC_SEX)
+df_2$VIC_RACE = as.factor(df_2$VIC_RACE)
+```
+Run Summary Stats
+```{r}
+summary(df_2)
+```
+## Step 3: Add Visualizations and Analysis
+
+Need to include a few visualizations and one model. 1st visualization will be of which boroughs have the highest counts of incidents
+
+This code shows a bar graph of each boro by its total count if incidents
+```{r}
+vis_1 <- ggplot(df_2, aes(x = BORO)) +
+  geom_bar() +
+  labs(title = "Boroughs of New York City",
+       x = "Boroughs of New York City",
+       y = "Count of Incidents") +
+  theme_minimal()
+
+vis_1
+```
+* We can see that Brooklyn has had the most incidents from all of NYC boroughs.This is followed by Bronx, Queens, Manhattan, then Staten Island. 
+
+The 2nd visualization that I want to view is if the incident was a murder or not in the form of a table. 
+
+```{r}
+table(df_2$BORO, df_2$STATISTICAL_MURDER_FLAG)
+```
+
+The 3rd visualization will be of which time of day incidents occurred.
+
+```{r}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+
+df_3 = df_2 %>%
+  group_by(OCCUR_DAY) %>%
+  count()
+
+df_4 = df_2 %>%
+  group_by(OCCUR_HOUR) %>%
+  count()
+
+vis_3 <- ggplot(df_3, aes(x = OCCUR_DAY, y = n)) +
+  geom_col() +
+  labs(title = "Which day should people in New York be cautious of incidents?",
+       x = "Incident Occurence Day",
+       y = "Count of Incidents") +
+  theme_minimal()
+vis_3
+```
+* The 4th visualization  represents time of day incidents occurred.
+```{r}
+vis_4 <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n)) +
+  geom_line() +
+  labs(title = "Which time should people in New York be cautious of incidents?",
+       x = "Incident Occurence Hour",
+       y = "Count of Incidents") +
+  theme_minimal()
+vis_4
+```
+Now, lest look at the Perpetrators and Victims of this data
+
+Age group
+```{r}
+table(df_2$PERP_AGE_GROUP, df_2$VIC_AGE_GROUP)
+```
+Sex
+```{r}
+table(df_2$PERP_SEX, df_2$VIC_SEX)
+```
+Race/Ethnicity
+```{r}
+table(df_2$PERP_RACE, df_2$VIC_RACE)
+```
+
+## Buidling a model
+
+I want to see view the probability if an incident is likely a murder case or not?
+
+```{r}
+mylogit <- glm(STATISTICAL_MURDER_FLAG ~ PERP_RACE + PERP_SEX + PERP_AGE_GROUP + OCCUR_HOUR + OCCUR_DAY, data = df_2, family = binomial)
+summary(mylogit)
+```
+
+## Conclusion 
+
+My analysis was to see what characteristics, if any, had any impact on if an incident were more likely a murder case or not. I have never really looked into these types of statistics for NYC specifically, but the data does show alot of interesting things. For example, the perp age group really does not have anything to do with if an incident was a murder case or not. The day of the week does tho however, on Thursdays there is more likely to be an incident.
+
+*More males commit incidents than females. 
+*PACIFIC ISLANDER commit the least amount of incidents 
+*The hour of day does have an impact if an incident is a murder case or not
+
+## Thank you
